@@ -166,17 +166,15 @@ void vehicle_loop(void *_vi)
 	while (1) {
 		/* vehicle main code */
 		if(step != 0) thread_cnt_cur--;
-		res = try_move(start, dest, step, vi);
-		if(step != 0) thread_cnt_cur++;
 
-		if(step == 0) activate_thread++; //ok
+		res = try_move(start, dest, step, vi);
+
+		if(step != 0) thread_cnt_cur++;
+		if(step == 0) activate_thread++;
 
 		if (res == 1) {
-			if(activate_thread >= thread_cnt_cur) moving_thread++;
 			step++;
 		}
-
-		if (res == 2) if(activate_thread >= thread_cnt_cur) moving_thread++;
 
 		/* termination condition. */ 
 		if (res == 0) {
@@ -184,11 +182,14 @@ void vehicle_loop(void *_vi)
 			break;
 		}
 
+		if(activate_thread >= thread_cnt_cur) moving_thread++;
+
 		/* unitstep change! */
 		if(moving_thread >= thread_cnt_cur) {
 			crossroads_step++;
 			moving_thread = 0;
 		}
+
 		unitstep_changed();
 	}	
 
