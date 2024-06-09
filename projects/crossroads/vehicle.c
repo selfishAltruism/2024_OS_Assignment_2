@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 
 #include "threads/thread.h"
@@ -6,6 +5,19 @@
 #include "projects/crossroads/vehicle.h"
 #include "projects/crossroads/map.h"
 #include "projects/crossroads/ats.h"
+
+#define CROSSROADPOSTIONNUM 8
+
+int crossroadInclue = 0;
+const int crossroadPostion[CROSSROADPOSTIONNUM][2] = {{2,2},{2,3},{2,4},{3,4},{4,4},{4,3},{4,2},{3,2}};
+
+bool checkCrossroadInclue(int row, int col){
+	for(int i = 0; i < CROSSROADPOSTIONNUM; i++){
+		if(crossroadPostion[i][0] == row && crossroadPostion[i][1] == col) return true;
+	}
+	return false;
+}
+
 
 /* path. A:0 B:1 C:2 D:3 */
 const struct position vehicle_path[4][4][12] = {
@@ -75,19 +87,62 @@ static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 		}
 	}
 
-	/* lock next position */
-	lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
-	if (vi->state == VEHICLE_STATUS_READY) {
-		/* start this vehicle */
-		vi->state = VEHICLE_STATUS_RUNNING;
-	} else {
-		/* release current position */
-		lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
+	if(!checkCrossroadInclue(pos_cur.row, pos_cur.col) && checkCrossroadInclue(pos_next.row, pos_next.col)){
+		if(crossroadInclue >= 7){
+			if (vi->state == VEHICLE_STATUS_READY) {
+				/* start this vehicle */
+				vi->state = VEHICLE_STATUS_RUNNING;
+			} else {
+				/* release current position */
+				lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
+			}
+			lock_acquire(&vi->map_locks[pos_cur.row][pos_cur.col]);
+			vi->position = pos_cur;
+
+			return 2;
+		}else{
+			crossroadInclue++;
+			lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
+			if (vi->state == VEHICLE_STATUS_READY) {
+				/* start this vehicle */
+				vi->state = VEHICLE_STATUS_RUNNING;
+			} else {
+				/* release current position */
+				lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
+			}
+			/* update position */
+			vi->position = pos_next;
+			return 1;
+		}
+	}else if(checkCrossroadInclue(pos_cur.row, pos_cur.col) && !checkCrossroadInclue(pos_next.row, pos_next.col)){
+		crossroadInclue--;
+		lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
+		if (vi->state == VEHICLE_STATUS_READY) {
+			/* start this vehicle */
+			vi->state = VEHICLE_STATUS_RUNNING;
+		} else {
+			/* release current position */
+			lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
+		}
+		/* update position */
+		vi->position = pos_next;
+		return 1;
+	}else{
+		lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
+		if (vi->state == VEHICLE_STATUS_READY) {
+			/* start this vehicle */
+			vi->state = VEHICLE_STATUS_RUNNING;
+		} else {
+			/* release current position */
+			lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
+		}
+		/* update position */
+		vi->position = pos_next;
+		return 1;
 	}
-	/* update position */
-	vi->position = pos_next;
+
+		
 	
-	return 1;
 }
 
 void init_on_mainthread(int thread_cnt){
