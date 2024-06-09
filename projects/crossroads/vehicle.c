@@ -8,15 +8,19 @@
 
 #define CROSSROADPOSTIONNUM 8
 
-int crossroadInclue = 0;
-const int crossroadPostion[CROSSROADPOSTIONNUM][2] = {{2,2},{2,3},{2,4},{3,4},{4,4},{4,3},{4,2},{3,2}};
+int crossroad_inclue = 0;
+const int crossroad_postion[CROSSROADPOSTIONNUM][2] = {{2,2},{2,3},{2,4},{3,4},{4,4},{4,3},{4,2},{3,2}};
 
-bool checkCrossroadInclue(int row, int col){
+bool check_crossroad_inclue(int row, int col){
 	for(int i = 0; i < CROSSROADPOSTIONNUM; i++){
-		if(crossroadPostion[i][0] == row && crossroadPostion[i][1] == col) return true;
+		if(crossroad_postion[i][0] == row && crossroad_postion[i][1] == col) return true;
 	}
 	return false;
 }
+
+int thread_cnt_cur = 0;
+int activate_thread = 0;
+int moving_thread = 0;
 
 
 /* path. A:0 B:1 C:2 D:3 */
@@ -68,7 +72,7 @@ static int is_position_outside(struct position pos)
 	return (pos.row == -1 || pos.col == -1);
 }
 
-/* return 0:termination, 1:success, -1:fail */
+/* return 0:termination, 1:success, -1:fail, 2:standby */
 static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 {
 	struct position pos_cur, pos_next;
@@ -87,13 +91,11 @@ static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 		}
 	}
 
-	if(!checkCrossroadInclue(pos_cur.row, pos_cur.col) && checkCrossroadInclue(pos_next.row, pos_next.col)){
-		if(crossroadInclue >= 7){
+	if(!check_crossroad_inclue(pos_cur.row, pos_cur.col) && check_crossroad_inclue(pos_next.row, pos_next.col)){
+		if(crossroad_inclue >= 7){
 			if (vi->state == VEHICLE_STATUS_READY) {
-				/* start this vehicle */
 				vi->state = VEHICLE_STATUS_RUNNING;
 			} else {
-				/* release current position */
 				lock_release(&vi->map_locks[pos_cur.row][pos_cur.col]);
 			}
 			lock_acquire(&vi->map_locks[pos_cur.row][pos_cur.col]);
@@ -101,7 +103,7 @@ static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 
 			return 2;
 		}else{
-			crossroadInclue++;
+			crossroad_inclue++;
 			lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
 			if (vi->state == VEHICLE_STATUS_READY) {
 				/* start this vehicle */
@@ -114,8 +116,8 @@ static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 			vi->position = pos_next;
 			return 1;
 		}
-	}else if(checkCrossroadInclue(pos_cur.row, pos_cur.col) && !checkCrossroadInclue(pos_next.row, pos_next.col)){
-		crossroadInclue--;
+	}else if(check_crossroad_inclue(pos_cur.row, pos_cur.col) && !check_crossroad_inclue(pos_next.row, pos_next.col)){
+		crossroad_inclue--;
 		lock_acquire(&vi->map_locks[pos_next.row][pos_next.col]);
 		if (vi->state == VEHICLE_STATUS_READY) {
 			/* start this vehicle */
@@ -140,13 +142,11 @@ static int try_move(int start, int dest, int step, struct vehicle_info *vi)
 		vi->position = pos_next;
 		return 1;
 	}
-
-		
-	
 }
 
 void init_on_mainthread(int thread_cnt){
 	/* Called once before spawning threads */
+	thread_cnt_cur = thread_cnt;
 }
 
 void vehicle_loop(void *_vi)
@@ -165,17 +165,30 @@ void vehicle_loop(void *_vi)
 	step = 0;
 	while (1) {
 		/* vehicle main code */
+		if(step != 0) thread_cnt_cur--;
 		res = try_move(start, dest, step, vi);
+		if(step != 0) thread_cnt_cur++;
+
+		if(step == 0) activate_thread++; //ok
+
 		if (res == 1) {
+			if(activate_thread >= thread_cnt_cur) moving_thread++;
 			step++;
 		}
 
+		if (res == 2) if(activate_thread >= thread_cnt_cur) moving_thread++;
+
 		/* termination condition. */ 
 		if (res == 0) {
+			thread_cnt_cur--;
 			break;
 		}
 
 		/* unitstep change! */
+		if(moving_thread >= thread_cnt_cur) {
+			crossroads_step++;
+			moving_thread = 0;
+		}
 		unitstep_changed();
 	}	
 
