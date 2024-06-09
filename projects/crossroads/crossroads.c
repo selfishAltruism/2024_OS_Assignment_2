@@ -120,6 +120,8 @@ void run_crossroads(char **argv)
 							vehicle_info[i].position.row,
 							vehicle_info[i].position.col);
 		}
+		crossroads_step++;
+		
 		/* sleep */
 		timer_msleep(1000);
 	} while (is_finished(vehicle_info, thread_cnt));
